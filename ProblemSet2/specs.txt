@@ -1,0 +1,13 @@
+one tile = 1 m
+speed = 1 m/s
+
+relay1
+relay2
+relay3
+relay4
+
+0 == stop
+1 == forward
+2 == backward
+3 == left
+4 == right
