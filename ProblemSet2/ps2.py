@@ -5,13 +5,12 @@ import random
 import time
 import datetime
 import random
-
-# import pylab
 import serial
 
 # For Python 2.7:
-from ps2_verify_movement27 import testRobotMovement, test_wheelchair_movement
-
+from ps2_verify_movement27 import  test_wheelchair_movement
+from .models import connection
+from ps2_visualize import WheelChairVisualization
 # If you get a "Bad magic number" ImportError, you are not using 
 # Python 2.7 and using most likely Python 2.6:
 
@@ -84,7 +83,6 @@ class RectangularRoom(object):
         self.height = height
         self.tiles = width * height
         self.cleanTiles = []
-        #raise NotImplementedError
 
     def cleanTileAtPosition(self, pos):
         """
@@ -97,7 +95,6 @@ class RectangularRoom(object):
         cleanPos = Position(int(pos.x), int(pos.y))
         if not((cleanPos.x, cleanPos.y) in [(p.x, p.y) for p in self.cleanTiles]):
             self.cleanTiles.append(cleanPos)
-        #raise NotImplementedError
 
     def isTileCleaned(self, m, n):
         """
@@ -345,35 +342,29 @@ def showPlot2(title, x_label, y_label):
     pylab.show()
 
 
-# === Problem 5
-#
-# 1) Write a function call to showPlot1 that generates an appropriately-labeled
-#     plot.
-#
-#       (... your call here ...)
-#
-
-#
-# 2) Write a function call to showPlot2 that generates an appropriately-labeled
-#     plot.
-#
-#       (... your call here ...)
-#
 
 class WheelChair(Robot):
     """
     to track the path traversed by wheelchair
     """
-    def __init__(self, room, speed, angular_speed):
+    def __init__(self, room, speed, angular_speed, path_tracked=None):
         super(WheelChair, self).__init__(room, speed)
         self.position = Position(4.0, 4.0)
         self.direction = math.pi / 2.0
         self.angular_speed = angular_speed
-        self.path_tracked = []
         self.status = 0
         self.initial_time = None
         self.final_time = None
-        self.ser = serial.Serial('/dev/ttyACM0', 9600)
+        self.anim = WheelChairVisualization(1, room.width, room.height)
+        self.collection = connection.anveshana.wheelchairs
+        if path_tracked:
+            self.path_tracked = path_tracked
+        else:
+            self.path_tracked = []
+        try:
+            self.ser = serial.Serial('/dev/ttyACM0', 9600)
+        except:
+            self.ser = None
 
     def isTileCleaned(self, m, n):
         path = self.path_tracked
@@ -432,7 +423,7 @@ class WheelChair(Robot):
             self.direction += 2*math.pi
         return self.direction
 
-    def move(self, anim, room):
+    def move(self, room):
         while True:
             try:
                 read_status = self.ser.readline()
@@ -444,18 +435,18 @@ class WheelChair(Robot):
                 self.status = read_status
                 if not self.initial_time:
                     self.initial_time = datetime.datetime.now()
-                    anim.update(room, [self])
+                    self.anim.update(room, [self])
                 else:
                     self.final_time = datetime.datetime.now()
                     if read_status == 1:
                         self.track_and_move()
-                    elif read_status == 2:
-                        self.track_and_move(backward=True)
+                    # elif read_status == 2:
+                    #     self.track_and_move(backward=True)
                     elif read_status == 4:
                         self.change_direction(clockwise=True)
                     else:
                         self.change_direction()
-                    anim.update(room, [self])
+                    self.anim.update(room, [self])
             elif read_status == 0:
                 if self.initial_time:
                     self.final_time = datetime.datetime.now()
@@ -465,16 +456,32 @@ class WheelChair(Robot):
                         self.change_direction(clockwise=True)
                     elif self.status == 3:
                         self.change_direction()
-                anim.update(room, [self])
+                self.anim.update(room, [self])
             elif read_status == 2:
                 print("path tracked by wheelchair:")
                 for position in self.path_tracked:
                     print(position)
                 print(self.direction/math.pi*180)
                 break
-        self.retrace(anim)
 
-    def retrace(self, anim):
+        name = str(raw_input("Please give name to this path: "))
+
+        wheel_chair_obj = self.collection.WheelChairModel({
+            'name': name,
+            'speed': self.speed,
+            'angular_speed': self.angular_speed,
+            'room': [self.room.width, self.room.height],
+            'direction': self.direction,
+            'path_tracked': self.path_tracked,
+            'status': self.status,
+            'initial_time': self.initial_time,
+            'final_time': self.final_time
+        }
+        )
+        wheel_chair_obj.save()
+        self.retrace()
+
+    def retrace(self):
         """
         retraces the path stored in path_tracked attribute
         :return: True if retraced successfully
@@ -500,11 +507,11 @@ class WheelChair(Robot):
             print "angle difference: ", math.degrees(delta_theta)
             t_angular = abs(delta_theta) / self.angular_speed
             self.direction = theta
-            anim.update(self.room, [self])
+            self.anim.update(self.room, [self])
             self.turn(t_angular, clockwise)
-            self.position.x += math.cos(self.direction)
-            self.position.y += math.sin(self.direction)
-            anim.update(self.room, [self])
+            self.position.x += distance * math.cos(self.direction)
+            self.position.y += distance * math.sin(self.direction)
+            self.anim.update(self.room, [self])
             self.forward(t)
         print("path traced successfully")
         self.ser.write('9')
@@ -575,10 +582,38 @@ class WheelChair(Robot):
         else:  # II and III quadrants
             return math.pi + angle
 
+    def choose_path(self):
+        print "Please select the path: "
+        paths = self.collection.distinct('name')
+        for i in range(1, len(paths) + 1):
+            print "{}. {}".format(i, paths[i-1])
+        x = raw_input("Please enter path number: ")
+        path = paths[x-1]
+        w = self.collection.find_one({'name': path})
+        if not w:
+            print "Path doesn't exist"
+        else:
+            room = RectangularRoom(
+                width=w['room'][0],
+                height=w['room'][1]
+            )
+            wheel_chair = WheelChair(
+                room=room,
+                speed=w['speed'],
+                angular_speed=w['angular_speed'],
+                path_tracked=w['path_tracked']
+            )
+            wheel_chair.retrace()
+
 
 if __name__ == '__main__':
+    print "Please select mode: "
+    print "1. Manual\n2. Auto"
+    mode = int(raw_input())
     room = RectangularRoom(width=10, height=10)
     angular_speed = 2 * 30 / 180.0 * math.pi
     wheel_chair = WheelChair(room=room, speed=1.0, angular_speed=angular_speed)
-    test_wheelchair_movement(wheel_chair, room)
-
+    if mode == 1:
+        test_wheelchair_movement(wheel_chair, room)
+    elif mode == 2:
+        wheel_chair.choose_path()
