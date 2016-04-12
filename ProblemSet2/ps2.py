@@ -587,7 +587,7 @@ class WheelChair(Robot):
         paths = self.collection.distinct('name')
         for i in range(1, len(paths) + 1):
             print "{}. {}".format(i, paths[i-1])
-        x = raw_input("Please enter path number: ")
+        x = int(raw_input("Please enter path number: "))
         path = paths[x-1]
         w = self.collection.find_one({'name': path})
         if not w:
