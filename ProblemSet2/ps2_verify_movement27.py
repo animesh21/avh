@@ -26,7 +26,4 @@ def test_wheelchair_movement(wheelchair, room, delay=.2):
     :return: None
     """
     print 'simulator function called'
-    anim = ps2_visualize.WheelChairVisualization(1, 10, 10, delay)
-    print 'animator created and calling move()'
-    wheelchair.move(anim, room)
-    anim.done()
+    wheelchair.move(room)

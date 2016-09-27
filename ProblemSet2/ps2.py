@@ -9,7 +9,7 @@ import serial
 
 # For Python 2.7:
 from ps2_verify_movement27 import  test_wheelchair_movement
-from .models import connection
+from models import connection
 from ps2_visualize import WheelChairVisualization
 # If you get a "Bad magic number" ImportError, you are not using 
 # Python 2.7 and using most likely Python 2.6:
